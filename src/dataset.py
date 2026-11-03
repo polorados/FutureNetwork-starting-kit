@@ -1,3 +1,4 @@
+# This file is responsible for loading the dataset and providing it to the model during training and validation.
 import csv
 import torch
 import blosc2
@@ -50,4 +51,10 @@ class RoomSenseDataset(Dataset):
 
         # On converti les données de type complex64 en données de type float32 (real and imaginary)
         frames = csi_window.view(np.float32).reshape(600, 1, 3, 1024, 2)
+
+        return {
+            "frames": torch.from_numpy(frames),
+            "intervals": torch.from_numpy(ati_window),
+            "headcount": torch.tensor(sample_info["headcount"], dtype=torch.long)
+        }
 
