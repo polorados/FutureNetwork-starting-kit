@@ -1,0 +1,23 @@
+[project]
+name = "futurenetwork-starting-kit"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Vision295", email = "theophilewachtel@gmail.com" }
+]
+dependencies = [
+    "blosc2>=4.14.1,<5",
+    "numpy>=2,<3",
+    "onnx>=1.16,<2",
+    "onnxruntime>=1.20,<2",
+    "onnxscript>=0.5,<1",
+    "torch>=2.9,<3",
+]
+
+[project.scripts]
+futurenetwork-starting-kit = "futurenetwork_starting_kit:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
