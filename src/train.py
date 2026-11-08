@@ -11,7 +11,7 @@ from src.models.baselines import BaselineCNN
 def main():
     # 1. Configuration
     data_dir = Path("data/labeled")
-    batch_size = 16 # how many batches processed at a time
+    batch_size = 2 # how many batches processed at a time
     epochs = 20 # combien de fois le modele va voir l'ensemble du dataset d'entrainement. 
     learning_rate = 1e-3
     

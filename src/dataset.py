@@ -55,6 +55,6 @@ class RoomSenseDataset(Dataset):
         return {
             "frames": torch.from_numpy(frames),
             "intervals": torch.from_numpy(ati_window),
-            "headcount": torch.tensor(sample_info["headcount"], dtype=torch.long)
+            "label": torch.tensor(sample_info["headcount"], dtype=torch.long)
         }
 

@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import onnxruntime as ort
 from pathlib import Path
+from time import perf_counter
 
 # Import the baseline model
 from src.models.baselines import BaselineCNN
@@ -47,11 +48,17 @@ def main():
         do_constant_folding=True,            # Optimize constant operations for faster CPU inference
         input_names=["frames", "intervals"], # Strictly required by the platform[cite: 8]
         output_names=["logits"],             # Strictly required by the platform[cite: 8]
+        external_data=False,
     )
     
-    # 5. Verify the exported model
+# 5. Verify the exported model
     print("\nVerifying exported ONNX model against platform requirements...")
     options = ort.SessionOptions()
+    
+    # Optional: Configure threads to match the example script configuration[cite: 10]
+    options.intra_op_num_threads = 4
+    options.inter_op_num_threads = 1
+    
     session = ort.InferenceSession(str(output_path), sess_options=options, providers=["CPUExecutionProvider"])
     
     # Convert dummy tensors to numpy for ONNX Runtime
@@ -60,11 +67,18 @@ def main():
         "intervals": dummy_intervals.numpy()
     }
     
-    # Run a test prediction
+    # --- WARM-UP RUN ---
+    # Run once to initialize memory and avoid compilation overhead skewing the time[cite: 10]
+    session.run(["logits"], ort_inputs)
+    
+    # --- TIMED RUN ---
+    start_time = perf_counter()
     ort_outs = session.run(["logits"], ort_inputs)
+    elapsed_time = perf_counter() - start_time
+    
     logits_out = ort_outs[0]
     
-    # Check shapes and types based on problem statement requirements
+    # Check shapes and types
     print(f"Output shape: {logits_out.shape} (Expected: (5,))")
     print(f"Output type: {logits_out.dtype} (Expected: float32)")
     
@@ -79,7 +93,15 @@ def main():
     if size_bytes >= 100_000_000:
         raise ValueError("❌ Export failed: Model exceeds the 100 MB limit.")
         
-    print("\n✅ Success! model.onnx is verified and ready for submission to the Agorize platform.")
+    # Check prediction time
+    print(f"CPU prediction time: {elapsed_time:.3f} s/sample")
+    if elapsed_time >= 0.7:
+        print("⚠️ WARNING: Prediction exceeds the 0.7 s/sample CPU budget![cite: 7]")
+        print("Estimate excludes loading overhead; server CPU speed may differ.[cite: 10]")
+    else:
+        print("✅ Speed check passed (on local CPU).")
+        
+    print("\n✅ Success! model.onnx is verified and ready for submission.")
 
 if __name__ == "__main__":
     main()
