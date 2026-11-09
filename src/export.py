@@ -6,6 +6,7 @@ from time import perf_counter
 
 # Import the baseline model
 from src.models.baselines import BaselineCNN
+from src.models.neural_nets import AdvancedCSINet
 
 def main():
     # 1. Configuration
@@ -13,7 +14,7 @@ def main():
     output_path = Path("model.onnx")
     
     # 2. Load the PyTorch model
-    model = BaselineCNN()
+    model = AdvancedCSINet()
     
     # Load the trained weights if they exist (allows testing the export even before training)
     if Path(weights_path).exists():

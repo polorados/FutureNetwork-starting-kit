@@ -7,6 +7,7 @@ from pathlib import Path
 # Import your custom dataset and model
 from src.dataset import RoomSenseDataset
 from src.models.baselines import BaselineCNN
+from src.models.neural_nets import AdvancedCSINet
 
 def main():
     # 1. Configuration
@@ -32,7 +33,7 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # 3. Model, Loss, and Optimizer Setup
-    model = BaselineCNN().to(device)
+    model = AdvancedCSINet().to(device)
     
     # CrossEntropyLoss is standard for multi-class classification tasks
     criterion = nn.CrossEntropyLoss()
