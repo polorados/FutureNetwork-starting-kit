@@ -10,20 +10,14 @@ def main():
     weights_path = "best_research_model.pt"
     output_path = Path("research_model.onnx")
     
-    # We must instantiate with the same parameters. 
-    # For export, num_domains doesn't matter because the branch is ignored.
-    model = WiCountDASL(num_classes=5, num_domains=1)
+    # --- DOMAIN MISMATCH FIX: Set num_domains to match your training set ---
+    # Update '6' below if your labeled dataset actually mapped to a different number of layouts
+    model = WiCountDASL(num_classes=5, num_domains=6) 
     
     if Path(weights_path).exists():
         print(f"Loading trained weights from {weights_path}...")
-        
-        # 1. Load the raw dictionary of weights from the file
         state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
-        
-        # 2. Filter out any weights belonging to the domain_classifier
         filtered_state_dict = {k: v for k, v in state_dict.items() if not k.startswith("domain_classifier")}
-        
-        # 3. Load the filtered weights. strict=False is now safe because the mismatching keys are gone.
         model.load_state_dict(filtered_state_dict, strict=False)
     else:
         print(f"Warning: '{weights_path}' not found. Exporting untrained model.")
@@ -36,6 +30,15 @@ def main():
     
     example_inputs = (dummy_frames, dummy_intervals)
     
+    # --- FIX 5: Declare Dynamic Axes ---
+    # This explicitly tells ONNX that the batch size (index 0) can change dynamically
+    dynamic_axes = {
+        "frames": {0: "batch_size"},
+        "intervals": {0: "batch_size"},
+        "logits": {0: "batch_size"}
+    }
+    # -----------------------------------
+    
     print(f"\nExporting model to {output_path}...")
     torch.onnx.export(
         model,
@@ -46,6 +49,7 @@ def main():
         do_constant_folding=True,
         input_names=["frames", "intervals"],
         output_names=["logits"],
+        dynamic_axes=dynamic_axes, 
         external_data=False, 
     )
     
@@ -55,7 +59,7 @@ def main():
     session = ort.InferenceSession(str(output_path), sess_options=options, providers=["CPUExecutionProvider"])
     
     ort_inputs = {"frames": dummy_frames.numpy(), "intervals": dummy_intervals.numpy()}
-    session.run(["logits"], ort_inputs) # Warm-up
+    session.run(["logits"], ort_inputs) 
     
     start_time = perf_counter()
     ort_outs = session.run(["logits"], ort_inputs)
@@ -63,8 +67,9 @@ def main():
     
     logits_out = ort_outs[0]
     
-    if logits_out.shape != (5,) or logits_out.dtype != np.float32:
-        raise ValueError("❌ Export failed: Output format incorrect.")
+    # Check shape[-1] instead of strictly (5,) to accommodate the dynamic batch dimension
+    if logits_out.shape[-1] != 5 or logits_out.dtype != np.float32:
+        raise ValueError(f"❌ Export failed: Output format incorrect. Got shape: {logits_out.shape}")
         
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"Model size: {size_mb:.2f} MB (Limit: 100.00 MB)")

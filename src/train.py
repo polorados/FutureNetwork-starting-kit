@@ -20,14 +20,22 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # 2. Data Loading & Splitting
-    # Load the full labeled dataset
-    full_dataset = RoomSenseDataset(data_dir, is_training=True)
+# 2. Data Loading & Splitting
+    # Create two separate dataset objects with different training flags
+    full_train_dataset = RoomSenseDataset(data_dir, is_training=True)
+    full_val_dataset = RoomSenseDataset(data_dir, is_training=False)
     
-    # Split into 80% training and 20% validation
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+    # Generate random, non-overlapping indices for the split
+    dataset_size = len(full_train_dataset)
+    indices = torch.randperm(dataset_size).tolist()
+    train_size = int(0.8 * dataset_size)
+    
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size:]
+    
+    # Apply the indices to create the final subsets
+    train_dataset = torch.utils.data.Subset(full_train_dataset, train_indices)
+    val_dataset = torch.utils.data.Subset(full_val_dataset, val_indices)
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)

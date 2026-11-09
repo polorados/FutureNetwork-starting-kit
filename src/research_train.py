@@ -14,7 +14,7 @@ def main():
     unlabeled_dir = Path("data/unlabeled")
     batch_size = 2
     epochs = 100
-    warm_up_epochs = 50 # Start DANN after epoch 50[cite: 19]
+    warm_up_epochs = 50 
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -33,23 +33,18 @@ def main():
     criterion_dom = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
     
-    # Initialize adaptive classwise thresholds[cite: 19]
     thresholds = torch.ones(5, device=device) * 0.95
-    
-    best_loss = float('inf')
 
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
         
-        # Calculate dynamic DANN weight[cite: 19]
         if epoch < warm_up_epochs:
             lambda_dann = 0.0
         else:
             p = float(epoch - warm_up_epochs) / (epochs - warm_up_epochs)
-            lambda_dann = 2. / (1. + np.exp(-10 * p)) - 1 # Standard DANN scheduling
+            lambda_dann = 2. / (1. + np.exp(-10 * p)) - 1 
             
-        # Zip the loaders. Cycle the labeled one since unlabeled is usually much larger.
         for labeled_batch, unlabeled_batch in zip(cycle(labeled_loader), unlabeled_loader):
             # 1. Supervised Branch
             frames_l = labeled_batch["frames"].to(device)
@@ -59,49 +54,49 @@ def main():
             
             optimizer.zero_grad()
             
-            # Forward pass for labeled data[cite: 18]
             logits_l, dom_logits_l = model(frames_l, intervals_l, alpha=lambda_dann, return_domain=True)
             loss_sup = criterion_cls(logits_l, labels_l)
             
-            # 2. Unsupervised SSL Branch[cite: 17]
+            # 2. Unsupervised SSL Branch
             frames_w = unlabeled_batch["frames_w"].to(device)
             frames_s = unlabeled_batch["frames_s"].to(device)
             intervals_u = unlabeled_batch["intervals"].to(device)
             domain_u = unlabeled_batch["domain"].to(device)
             
-            # Get weak pseudolabels without tracking gradients
+            # --- FIX 3: Lock dropout to generate stable pseudo-labels ---
+            model.eval()
             with torch.no_grad():
                 logits_w = model(frames_w, intervals_u, return_domain=False)
                 probs_w = torch.softmax(logits_w, dim=1)
                 max_probs, pseudo_labels = torch.max(probs_w, dim=1)
-                
-            # Filter by classwise adaptive thresholds[cite: 18]
-            mask = max_probs >= thresholds[pseudo_labels]
+            model.train()
+            # ------------------------------------------------------------
             
-            loss_unsup = torch.tensor(0.0, device=device)
-            if mask.sum() > 0:
-                logits_s, dom_logits_u = model(frames_s, intervals_u, alpha=lambda_dann, return_domain=True)
-                loss_unsup = criterion_cls(logits_s[mask], pseudo_labels[mask])
-                
-                # Update thresholds with exponential moving average
+            # --- FIX 2: Update thresholds based on the full current batch ---
+            with torch.no_grad():
                 for c in range(5):
-                    c_mask = (pseudo_labels == c) & mask
+                    c_mask = (pseudo_labels == c)
                     if c_mask.sum() > 0:
                         avg_conf = max_probs[c_mask].mean().item()
                         thresholds[c] = 0.99 * thresholds[c].item() + 0.01 * avg_conf
+            # ----------------------------------------------------------------
+            
+            mask = max_probs >= thresholds[pseudo_labels]
+            
+            # Always pass the strongly augmented frames to generate the domain logits
+            logits_s, dom_logits_u = model(frames_s, intervals_u, alpha=lambda_dann, return_domain=True)
+            
+            loss_unsup = torch.tensor(0.0, device=device)
+            if mask.sum() > 0:
+                loss_unsup = criterion_cls(logits_s[mask], pseudo_labels[mask])
 
-            # 3. Domain Adversarial Branch[cite: 18]
+            # 3. Domain Adversarial Branch
             loss_dom = torch.tensor(0.0, device=device)
             if lambda_dann > 0:
-                # We already calculated dom_logits_l. Let's calculate dom_logits_u if we skipped it above.
-                if mask.sum() == 0:
-                    _, dom_logits_u = model(frames_s, intervals_u, alpha=lambda_dann, return_domain=True)
-                
                 dom_logits_combined = torch.cat([dom_logits_l, dom_logits_u], dim=0)
                 dom_labels_combined = torch.cat([domain_l, domain_u], dim=0)
                 loss_dom = criterion_dom(dom_logits_combined, dom_labels_combined)
             
-            # Total Composite Loss[cite: 18]
             total_loss = loss_sup + (1.0 * loss_unsup) + (1.0 * loss_dom)
             total_loss.backward()
             optimizer.step()
@@ -111,9 +106,11 @@ def main():
         epoch_loss = running_loss / len(unlabeled_loader)
         print(f"Epoch {epoch+1}/{epochs} | Loss: {epoch_loss:.4f} | DANN W: {lambda_dann:.2f} | Thresh: {thresholds.mean().item():.2f}")
         
-        if epoch_loss < best_loss:
-            best_loss = epoch_loss
+        # --- FIX 1: Save at the end of training ---
+        # The loss intentionally spikes when DANN kicks in, so don't track best_loss here.
+        if epoch == epochs - 1:
             torch.save(model.state_dict(), "best_research_model.pt")
+            print("  -> Final DANN-trained model saved!")
             
 if __name__ == "__main__":
     main()

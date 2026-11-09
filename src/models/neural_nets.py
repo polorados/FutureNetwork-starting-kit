@@ -79,7 +79,7 @@ class AdvancedCSINet(nn.Module):
         final_temporal_feature = h_n[-1] # Shape: (B, 128)
         
         # 5. Process ATI intervals[cite: 8]
-        interval_mean = intervals.mean(dim=1, keepdim=True) # Shape: (B, 1)
+        interval_mean = (intervals.mean(dim=1, keepdim=True) / 5000.0)
         
         # 6. Concatenate and classify
         combined = torch.cat((final_temporal_feature, interval_mean), dim=1) # Shape: (B, 129)
