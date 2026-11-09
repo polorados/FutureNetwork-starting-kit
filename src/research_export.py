@@ -49,7 +49,6 @@ def main():
         do_constant_folding=True,
         input_names=["frames", "intervals"],
         output_names=["logits"],
-        dynamic_axes=dynamic_axes, 
         external_data=False, 
     )
     

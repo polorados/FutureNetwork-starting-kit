@@ -56,12 +56,21 @@ class ResearchUnlabeledDataset(Dataset):
         self.data_dir = data_dir
         self.samples = []
         
+        # Trouver l'ID maximum actuel pour continuer l'incrémentation
+        current_max_id = max(domain_map.values()) if domain_map else -1
+        
         with (self.data_dir / "samples.csv").open(newline="") as stream:
             reader = csv.DictReader(stream)
             for row in reader:
                 layout = row["layout"]
-                # Map unseen layouts to a generic domain ID (0) to avoid crashes
-                domain_id = domain_map.get(layout, 0)
+                
+                # --- CORRECTION 3 : Attribuer un NOUVEL ID aux domaines inconnus ---
+                if layout not in domain_map:
+                    current_max_id += 1
+                    domain_map[layout] = current_max_id
+                
+                domain_id = domain_map[layout]
+                # -------------------------------------------------------------------
                 
                 self.samples.append({
                     "identifier": row["identifier"],

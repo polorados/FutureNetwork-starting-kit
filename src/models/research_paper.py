@@ -29,17 +29,17 @@ class WiCountDASL(nn.Module):
         
         self.shared_backbone = nn.Sequential(
             nn.Conv1d(in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3),
-            nn.BatchNorm1d(16),
+            nn.InstanceNorm1d(16),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2, stride=2),
             
             nn.Conv1d(in_channels=16, out_channels=32, kernel_size=5, stride=2, padding=2),
-            nn.BatchNorm1d(32),
+            nn.InstanceNorm1d(32),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2, stride=2),
             
             nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm1d(64),
+            nn.InstanceNorm1d(64),
             nn.ReLU(),
             nn.AdaptiveAvgPool1d(1),
             nn.Dropout(p=0.4)
@@ -67,14 +67,11 @@ class WiCountDASL(nn.Module):
         mag = torch.norm(frames, dim=-1) 
         mag = mag.squeeze(2) # Shape: [Batch, 600 (Time), 3 (Rx), 1024 (Subcarriers)]
         
-        # --- FIX 4: Preserve the temporal dimension ---
-        # Instead of averaging time (dim=1), average across the 1024 subcarriers (dim=-1).
-        # This gives us the 600 chronological steps needed for the CNN to process sequences.
+        # Soustraction du fond statique (room signature)
+        mag = mag - mag.mean(dim=1, keepdim=True)
+
         x = mag.mean(dim=-1) # Shape: [Batch, 600, 3]
-        
-        # Conv1d expects [Batch, Channels, Sequence_Length], so permute:
         x = x.permute(0, 2, 1) # Shape: [Batch, 3, 600]
-        # ----------------------------------------------
         
         f_cnn = self.shared_backbone(x).squeeze(-1)
         interval_mean = intervals.mean(dim=1, keepdim=True)

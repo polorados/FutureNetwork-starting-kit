@@ -12,9 +12,10 @@ from src.models.research_paper import WiCountDASL
 def main():
     labeled_dir = Path("data/labeled")
     unlabeled_dir = Path("data/unlabeled")
-    batch_size = 2
+    batch_size = 8
     epochs = 100
     warm_up_epochs = 50 
+    pseudo_label_warmup = 15
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -29,7 +30,13 @@ def main():
 
     model = WiCountDASL(num_classes=5, num_domains=num_domains).to(device)
     
-    criterion_cls = nn.CrossEntropyLoss()
+    class_weights = torch.tensor([1.0, 0.7, 3.0, 3.0, 3.0], device=device)
+    
+    # 1. Perte AVEC poids pour les données dont on connaît la vraie réponse
+    criterion_sup = nn.CrossEntropyLoss(weight=class_weights)
+    
+    # 2. Perte SANS poids pour les pseudo-labels (laisse la confiance naturelle du modèle agir)
+    criterion_unsup = nn.CrossEntropyLoss()
     criterion_dom = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-5)
     
@@ -39,11 +46,15 @@ def main():
         model.train()
         running_loss = 0.0
         
+        # --- CORRECTION 4b : Poids progressif/différé pour la perte non supervisée ---
+        unsup_weight = 0.0 if epoch < pseudo_label_warmup else 1.0
+        # -----------------------------------------------------------------------------
+        
         if epoch < warm_up_epochs:
             lambda_dann = 0.0
         else:
             p = float(epoch - warm_up_epochs) / (epochs - warm_up_epochs)
-            lambda_dann = 2. / (1. + np.exp(-10 * p)) - 1 
+            lambda_dann = 2. / (1. + np.exp(-10 * p)) - 1
             
         for labeled_batch, unlabeled_batch in zip(cycle(labeled_loader), unlabeled_loader):
             # 1. Supervised Branch
@@ -55,7 +66,7 @@ def main():
             optimizer.zero_grad()
             
             logits_l, dom_logits_l = model(frames_l, intervals_l, alpha=lambda_dann, return_domain=True)
-            loss_sup = criterion_cls(logits_l, labels_l)
+            loss_sup = criterion_sup(logits_l, labels_l)
             
             # 2. Unsupervised SSL Branch
             frames_w = unlabeled_batch["frames_w"].to(device)
@@ -88,7 +99,7 @@ def main():
             
             loss_unsup = torch.tensor(0.0, device=device)
             if mask.sum() > 0:
-                loss_unsup = criterion_cls(logits_s[mask], pseudo_labels[mask])
+                loss_unsup = criterion_unsup(logits_s[mask], pseudo_labels[mask])
 
             # 3. Domain Adversarial Branch
             loss_dom = torch.tensor(0.0, device=device)
@@ -97,7 +108,7 @@ def main():
                 dom_labels_combined = torch.cat([domain_l, domain_u], dim=0)
                 loss_dom = criterion_dom(dom_logits_combined, dom_labels_combined)
             
-            total_loss = loss_sup + (1.0 * loss_unsup) + (1.0 * loss_dom)
+            total_loss = loss_sup + (unsup_weight * loss_unsup) + (1.0 * loss_dom)
             total_loss.backward()
             optimizer.step()
             
