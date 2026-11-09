@@ -38,7 +38,11 @@ class BaselineCNN(nn.Module):
         # ONNX platform inputs do NOT have a batch dimension: (600, 1, 3, 1024, 2)
         # PyTorch DataLoader adds a batch dimension during training: (B, 600, 1, 3, 1024, 2)
         # This check dynamically handles both scenarios.
+
+        #check si on est dans une situation d'évaluation ou d'entrainement, 
+        # parcequ'en entrainement la donnée est ajoutée un batch à la fois donc dim = 5
         has_batch = (frames.dim() == 6)
+        # ajoute une dimension de batch si elle n'existe pas.
         if not has_batch:
             frames = frames.unsqueeze(0)
             intervals = intervals.unsqueeze(0)
@@ -50,6 +54,7 @@ class BaselineCNN(nn.Module):
         
         # 2. Average across the time (600) and Tx antenna (1) dimensions
         # This simplifies the problem to static spatial/frequency features for the baseline
+        # On donne ce qu'attend un CNN. des channels (comme pour le RGB) et une sequence length.
         x = mag.mean(dim=(1, 2)) # Shape becomes: (B, 3, 1024)
         
         # 3. Extract features using the 1D CNN
