@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from pathlib import Path
