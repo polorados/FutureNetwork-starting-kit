@@ -31,7 +31,7 @@ class CSICNNFeatureExtractor(nn.Module):
             nn.Conv1d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
         )
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.1)
         self.out_dim = out_dim  # 64 (avg) + 64 (max)
 
     def forward(self, x):
@@ -42,7 +42,7 @@ class CSICNNFeatureExtractor(nn.Module):
 
 
 class AdvancedCSINet(nn.Module):
-    def __init__(self, use_intervals=False):
+    def __init__(self, use_intervals=True):
         """use_intervals: feed ATI statistics to the classifier.
         Default False: the intervals depend on the room's Wi-Fi traffic and are an easy
         shortcut to overfit. Try True as a separate submission to compare on the leaderboard.
@@ -52,21 +52,21 @@ class AdvancedCSINet(nn.Module):
         self.feature_extractor = CSICNNFeatureExtractor()
 
         self.lstm = nn.LSTM(input_size=128, hidden_size=128, num_layers=2,
-                            batch_first=True, dropout=0.3)
+                            batch_first=True, dropout=0.1)
 
         # Branch with explicit temporal statistics (std + mean abs frame-to-frame change,
         # per antenna and per subcarrier band): 2 * 3 * 16 = 96 values
         self.stats_mlp = nn.Sequential(
             nn.Linear(2 * 3 * N_BANDS, 64),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.1),
         )
 
         in_dim = 128 + 64 + (2 if use_intervals else 0)
         self.classifier = nn.Sequential(
             nn.Linear(in_dim, 64),
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(0.1),
             nn.Linear(64, 5),
         )
 

@@ -117,7 +117,8 @@ def main():
 
     # ---- Model / loss / optimiser ----
     model = AdvancedCSINet().to(device)
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    class_weights = torch.tensor([1.0, 0.7, 3.0, 3.0, 3.0]).to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
